@@ -1,9 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import data from './data.json';
 
-// Import komponen Chart dari react-chartjs-2
+// Charts
 import { Bar, Pie, Line } from 'react-chartjs-2';
-// Import fungsi yang diperlukan dari Chart.js
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -17,7 +16,6 @@ import {
   LineElement,
 } from 'chart.js';
 
-// Daftarkan komponen Chart.js yang akan digunakan
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -30,178 +28,255 @@ ChartJS.register(
   LineElement
 );
 
-function App() {
-  // State untuk menyimpan kategori yang dipilih di filter
+// Small reusable Stat Card component
+const StatCard = ({ title, value, subtitle }) => (
+  <div className="bg-white/70 backdrop-blur-md p-4 rounded-xl shadow-sm border border-gray-100">
+    <div className="text-sm text-gray-500">{title}</div>
+    <div className="mt-1 text-2xl font-semibold text-gray-800">{value}</div>
+    {subtitle && <div className="text-xs text-gray-400 mt-1">{subtitle}</div>}
+  </div>
+);
+
+export default function App() {
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [search, setSearch] = useState('');
 
-  // useMemo untuk memproses data. Ini akan dihitung ulang hanya jika 'data' atau 'selectedCategory' berubah.
-  const processedData = useMemo(() => {
-    // Filter data berdasarkan kategori yang dipilih
-    const filteredData = selectedCategory === 'All'
-      ? data
-      : data.filter(item => item.category === selectedCategory);
+  // unique categories
+  const categories = useMemo(() => ['All', ...Array.from(new Set(data.map(d => d.category)))], []);
 
-    // --- Hitung KPI (Key Performance Indicator) ---
-    const totalSales = filteredData.reduce((acc, item) => acc + (item.quantity * item.price), 0);
-    const totalOrders = new Set(filteredData.map(item => item.id)).size;
+  // filtered data by category and search
+  const filtered = useMemo(() => {
+    return data.filter(item => {
+      const byCat = selectedCategory === 'All' ? true : item.category === selectedCategory;
+      const bySearch = [item.product, item.country, item.category].join(' ').toLowerCase().includes(search.trim().toLowerCase());
+      return byCat && bySearch;
+    });
+  }, [selectedCategory, search]);
 
-    // --- Siapkan data untuk Grafik Batang (Penjualan per Kategori) ---
-    const salesByCategory = {};
-    filteredData.forEach(item => {
-      if (!salesByCategory[item.category]) {
-        salesByCategory[item.category] = 0;
-      }
-      salesByCategory[item.category] += item.quantity * item.price;
+  // KPIs and aggregations
+  const { totalSales, totalUnits, avgPrice, topCategory, salesByCategory, salesByCountry, salesByMonth, topProducts } = useMemo(() => {
+    let totalSalesLocal = 0;
+    let totalUnitsLocal = 0;
+    const salesByCategoryLocal = {};
+    const salesByCountryLocal = {};
+    const salesByMonthLocal = {};
+    const productUnits = {};
+
+    filtered.forEach(item => {
+      const revenue = item.price * item.quantity;
+      totalSalesLocal += revenue;
+      totalUnitsLocal += item.quantity;
+
+      salesByCategoryLocal[item.category] = (salesByCategoryLocal[item.category] || 0) + revenue;
+      salesByCountryLocal[item.country] = (salesByCountryLocal[item.country] || 0) + revenue;
+
+      const month = item.date.substring(0, 7); // YYYY-MM
+      salesByMonthLocal[month] = (salesByMonthLocal[month] || 0) + revenue;
+
+      productUnits[item.product] = (productUnits[item.product] || 0) + item.quantity;
     });
 
-    // --- Siapkan data untuk Grafik Pie (Penjualan per Negara) ---
-    const salesByCountry = {};
-    filteredData.forEach(item => {
-      if (!salesByCountry[item.country]) {
-        salesByCountry[item.country] = 0;
-      }
-      salesByCountry[item.country] += item.quantity * item.price;
-    });
+    const avgPriceLocal = totalUnitsLocal ? Math.round(totalSalesLocal / totalUnitsLocal) : 0;
 
-    // --- Siapkan data untuk Grafik Garis (Tren Penjualan Bulanan) ---
-    const salesByMonth = {};
-    filteredData.forEach(item => {
-      const month = item.date.substring(0, 7); // Ambil format YYYY-MM
-      if (!salesByMonth[month]) {
-        salesByMonth[month] = 0;
-      }
-      salesByMonth[month] += item.quantity * item.price;
-    });
+    // top category
+    const topCategoryLocal = Object.entries(salesByCategoryLocal).sort((a, b) => b[1] - a[1])[0]?.[0] || '-';
+
+    // top products (by units)
+    const topProductsLocal = Object.entries(productUnits).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     return {
-      totalSales,
-      totalOrders,
-      salesByCategory,
-      salesByCountry,
-      salesByMonth,
+      totalSales: totalSalesLocal,
+      totalUnits: totalUnitsLocal,
+      avgPrice: avgPriceLocal,
+      topCategory: topCategoryLocal,
+      salesByCategory: salesByCategoryLocal,
+      salesByCountry: salesByCountryLocal,
+      salesByMonth: salesByMonthLocal,
+      topProducts: topProductsLocal,
     };
-  }, [data, selectedCategory]);
+  }, [filtered]);
 
-  // Ambil daftar kategori unik untuk dropdown filter
-  const categories = useMemo(() => {
-    const cats = new Set(data.map(item => item.category));
-    return ['All', ...cats];
-  }, [data]);
-
-  // --- Konfigurasi untuk setiap grafik ---
+  // Chart datasets
   const barChartData = {
-    labels: Object.keys(processedData.salesByCategory),
+    labels: Object.keys(salesByCategory),
     datasets: [
       {
-        label: 'Total Penjualan (Rp)',
-        data: Object.values(processedData.salesByCategory),
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1,
+        label: 'Penjualan (Rp)',
+        data: Object.values(salesByCategory),
+        backgroundColor: 'rgba(99,102,241,0.85)',
+        borderRadius: 8,
+        barThickness: 32,
       },
     ],
   };
 
   const pieChartData = {
-    labels: Object.keys(processedData.salesByCountry),
+    labels: Object.keys(salesByCountry),
     datasets: [
       {
-        label: 'Total Penjualan (Rp)',
-        data: Object.values(processedData.salesByCountry),
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.6)',
-          'rgba(54, 162, 235, 0.6)',
-          'rgba(255, 206, 86, 0.6)',
-        ],
-        borderColor: [
-          'rgba(255, 99, 132, 1)',
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 206, 86, 1)',
-        ],
-        borderWidth: 1,
+        data: Object.values(salesByCountry),
+        backgroundColor: ['rgba(99,102,241,0.85)', 'rgba(37,99,235,0.8)', 'rgba(34,197,94,0.85)', 'rgba(249,115,22,0.85)'],
+        hoverOffset: 6,
       },
     ],
   };
 
   const lineChartData = {
-    labels: Object.keys(processedData.salesByMonth).sort(),
+    labels: Object.keys(salesByMonth).sort(),
     datasets: [
       {
-        label: 'Tren Penjualan Bulanan (Rp)',
-        data: Object.values(processedData.salesByMonth),
-        fill: false,
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        tension: 0.1,
+        label: 'Penjualan Bulanan (Rp)',
+        data: Object.keys(salesByMonth).sort().map(k => salesByMonth[k]),
+        fill: true,
+        tension: 0.3,
+        backgroundColor: 'rgba(99,102,241,0.12)',
+        borderColor: 'rgba(99,102,241,0.95)',
+        pointRadius: 4,
       },
     ],
   };
 
-  // Opsi umum untuk grafik
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: {
-        position: 'top',
-      },
+      legend: { display: false },
+      tooltip: { mode: 'index', intersect: false },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: '#6b7280' } },
+      y: { grid: { color: 'rgba(15,23,42,0.06)' }, ticks: { callback: val => new Intl.NumberFormat('id-ID').format(val) } },
     },
   };
 
+  // helper format
+  const formatIDR = (v) => {
+    return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(v));
+  };
+
   return (
-    <div className="bg-gray-100 min-h-screen p-4 md:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 text-gray-800">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-800">Dashboard Analisis Penjualan</h1>
-          <p className="text-gray-600">Visualisasi data penjualan interaktif</p>
+        <header className="flex items-start justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold">Dashboard Analisis Penjualan</h1>
+            <p className="text-gray-500 mt-1">Ringkasan penjualan & tren — modern minimalist layout untuk portfolio.</p>
+          </div>
+
+          <div className="hidden md:flex items-center gap-3">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari produk, negara, kategori..."
+              className="px-3 py-2 border rounded-lg bg-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            <div className="text-sm text-gray-500">Data: {filtered.length} baris</div>
+          </div>
         </header>
 
-        {/* Filter */}
-        <div className="mb-6">
-          <label htmlFor="category-filter" className="block text-sm font-medium text-gray-700">Filter berdasarkan Kategori:</label>
-          <select
-            id="category-filter"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-          >
-            {categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+        {/* Controls + KPI */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+          <div className="lg:col-span-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-gray-600">Kategori</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="px-3 py-2 bg-white border rounded-md shadow-sm focus:outline-none"
+                >
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button className="px-3 py-2 bg-white border rounded-md text-sm shadow-sm">Export CSV</button>
+                <button className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm shadow hover:opacity-95">Download</button>
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard title="Total Penjualan" value={formatIDR(totalSales)} />
+              <StatCard title="Total Unit Terjual" value={totalUnits.toLocaleString()} />
+              <StatCard title="Rata-rata Harga" value={formatIDR(avgPrice)} />
+              <StatCard title="Kategori Teratas" value={topCategory} />
+            </div>
+          </div>
+
+          {/* Small summary card */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <h3 className="text-sm text-gray-500">Ringkasan Cepat</h3>
+            <div className="mt-3 text-sm text-gray-700 space-y-2">
+              <div>Total Revenue: <strong>{formatIDR(totalSales)}</strong></div>
+              <div>Unit Terjual: <strong>{totalUnits}</strong></div>
+              <div>Baris ditampilkan: <strong>{filtered.length}</strong></div>
+            </div>
+          </div>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-700">Total Penjualan</h3>
-            <p className="text-3xl font-bold text-green-600">Rp {processedData.totalSales.toLocaleString('id-ID')}</p>
+        {/* Charts area */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-gray-100 h-96">
+            <h4 className="text-lg font-semibold mb-3">Tren Penjualan Bulanan</h4>
+            <div className="h-72">
+              <Line data={lineChartData} options={chartOptions} />
+            </div>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold text-gray-700">Total Pesanan</h3>
-            <p className="text-3xl font-bold text-blue-600">{processedData.totalOrders}</p>
+
+          <div className="space-y-6">
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 h-56">
+              <h4 className="text-lg font-semibold mb-3">Penjualan per Kategori</h4>
+              <div className="h-36">
+                <Bar data={barChartData} options={chartOptions} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 h-56">
+              <h4 className="text-lg font-semibold mb-3">Distribusi per Negara</h4>
+              <div className="h-36 flex items-center justify-center">
+                <Pie data={pieChartData} options={{ ...chartOptions, plugins: { legend: { display: true, position: 'bottom' } } }} />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Grid untuk Grafik */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Penjualan per Kategori</h2>
-            <Bar data={barChartData} options={chartOptions} />
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Penjualan per Negara</h2>
-            <Pie data={pieChartData} options={chartOptions} />
+        {/* Table */}
+        <div className="mt-8 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold mb-4">Transaksi Terbaru</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-gray-500 border-b">
+                <tr>
+                  <th className="py-2 px-3">ID</th>
+                  <th className="py-2 px-3">Product</th>
+                  <th className="py-2 px-3">Kategori</th>
+                  <th className="py-2 px-3">Qty</th>
+                  <th className="py-2 px-3">Price</th>
+                  <th className="py-2 px-3">Date</th>
+                  <th className="py-2 px-3">Country</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice().reverse().map(row => (
+                  <tr key={row.id} className="border-b hover:bg-gray-50">
+                    <td className="py-3 px-3 text-gray-600">{row.id}</td>
+                    <td className="py-3 px-3 font-medium">{row.product}</td>
+                    <td className="py-3 px-3">{row.category}</td>
+                    <td className="py-3 px-3">{row.quantity}</td>
+                    <td className="py-3 px-3">{formatIDR(row.price)}</td>
+                    <td className="py-3 px-3">{row.date}</td>
+                    <td className="py-3 px-3">{row.country}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-md mt-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Tren Penjualan Bulanan</h2>
-          <Line data={lineChartData} options={chartOptions} />
-        </div>
+        <footer className="mt-8 text-center text-gray-400 text-sm">Designed by Muzakir • Simple modern minimalist dashboard</footer>
       </div>
     </div>
   );
 }
-
-export default App;
