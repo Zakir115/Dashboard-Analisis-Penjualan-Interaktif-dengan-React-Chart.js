@@ -1,0 +1,12 @@
+[
+  { "id": 1, "product": "Laptop", "category": "Elektronik", "quantity": 1, "price": 12000000, "date": "2023-10-01", "country": "Indonesia" },
+  { "id": 2, "product": "Mouse", "category": "Aksesoris", "quantity": 2, "price": 250000, "date": "2023-10-02", "country": "Malaysia" },
+  { "id": 3, "product": "Keyboard", "category": "Aksesoris", "quantity": 1, "price": 800000, "date": "2023-10-03", "country": "Indonesia" },
+  { "id": 4, "product": "Monitor", "category": "Elektronik", "quantity": 1, "price": 3000000, "date": "2023-11-05", "country": "Singapura" },
+  { "id": 5, "product": "Headset", "category": "Aksesoris", "quantity": 3, "price": 500000, "date": "2023-11-06", "country": "Indonesia" },
+  { "id": 6, "product": "Kursi Gaming", "category": "Furniture", "quantity": 1, "price": 2500000, "date": "2023-11-10", "country": "Malaysia" },
+  { "id": 7, "product": "Meja", "category": "Furniture", "quantity": 1, "price": 1500000, "date": "2023-12-01", "country": "Indonesia" },
+  { "id": 8, "product": "Webcam", "category": "Elektronik", "quantity": 2, "price": 750000, "date": "2023-12-05", "country": "Singapura" },
+  { "id": 9, "product": "Mouse Pad", "category": "Aksesoris", "quantity": 5, "price": 100000, "date": "2023-12-12", "country": "Indonesia" },
+  { "id": 10, "product": "Lampu Meja", "category": "Furniture", "quantity": 1, "price": 300000, "date": "2024-01-02", "country": "Malaysia" }
+]
